@@ -11,6 +11,7 @@ import de.hdodenhof.circleimageview.CircleImageView;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -21,6 +22,7 @@ import android.widget.Toast;
 import com.bumptech.glide.Glide;
 import com.example.mychatapplication.Adapter.MessageAdapter;
 import com.example.mychatapplication.Model.Chat;
+import com.example.mychatapplication.Model.Group;
 import com.example.mychatapplication.Model.User;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -85,7 +87,12 @@ public class MessageActivity extends AppCompatActivity {
 
         intent = getIntent();
 
+        String mode = "";
         final String userid = intent.getStringExtra("userid");
+        if (intent.hasExtra("mode")) {
+            mode  = intent.getStringExtra("mode");
+        }
+
 
         btn_send.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -101,31 +108,67 @@ public class MessageActivity extends AppCompatActivity {
         });
 
         fuser = FirebaseAuth.getInstance().getCurrentUser();
-        reference = FirebaseDatabase.getInstance().getReference("Users").child(userid);
+        if (mode.equals("group")) {
+            reference = FirebaseDatabase.getInstance().getReference("Groups").child(userid);
 
+            reference.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                    Group group = dataSnapshot.getValue(Group.class);
+                    if (group != null) {
+                        username.setText(group.getName());
 
+                        if (group.getImageUrl().equals("default")){
+                            profile_image.setImageResource(R.mipmap.ic_launcher);
+                        } else {
+                            Glide.with(MessageActivity.this).load(group.getImageUrl()).into(profile_image);
+                        }
 
-        reference.addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                User user = dataSnapshot.getValue(User.class);
-                username.setText(user.getUsername());
-                if (user.getImageUrl().equals("default")){
-                    profile_image.setImageResource(R.mipmap.ic_launcher);
-                } else {
-                    Glide.with(MessageActivity.this).load(user.getImageUrl()).into(profile_image);
+                        readMessage(fuser.getUid(), userid,true, group.getImageUrl());
+                    }
                 }
 
-                readMessage(fuser.getUid(), userid, user.getImageUrl());
+                @Override
+                public void onCancelled(@NonNull DatabaseError databaseError) {
 
-            }
+                }
+            });
 
-            @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
 
-            }
-        });
-        
+
+        }
+        else{reference = FirebaseDatabase.getInstance().getReference("Users").child(userid);
+
+
+            reference.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                    User user = dataSnapshot.getValue(User.class);
+                    username.setText(user.getUsername());
+                    if (user.getImageUrl().equals("default")){
+                        profile_image.setImageResource(R.mipmap.ic_launcher);
+                    } else {
+                        Glide.with(MessageActivity.this).load(user.getImageUrl()).into(profile_image);
+                    }
+
+                    readMessage(fuser.getUid(), userid,false, user.getImageUrl());
+
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError databaseError) {
+
+                }
+            });
+
+
+
+        }
+
+
+
+
+
     }
 
     private void sendMessage(String sender, String receiver, String message){
@@ -139,7 +182,7 @@ public class MessageActivity extends AppCompatActivity {
 
     }
 
-    private void readMessage(final String myid, final String userid, final String imageurl){
+    private void readMessage(final String myid, final String userid, final boolean isGroup, final String imageurl){
         mChat = new ArrayList<>();
 
         reference = FirebaseDatabase.getInstance().getReference("Chats");
@@ -149,10 +192,16 @@ public class MessageActivity extends AppCompatActivity {
                 mChat.clear();
                 for (DataSnapshot snapshot : dataSnapshot.getChildren()){
                     Chat chat = snapshot.getValue(Chat.class);
-                    if (chat.getReceiver().equals(myid) && chat.getSender().equals(userid) ||
-                        chat.getReceiver().equals(userid) && chat.getSender().equals(myid)){
-                        mChat.add(chat);
+                    if (chat.getReceiver().equals(myid) || chat.getSender().equals(myid)) {
+                        Log.d("HERE", "Reached here");
+                    }
 
+                    if (!isGroup && (chat.getReceiver().equals(myid) && chat.getSender().equals(userid) ||
+                            chat.getReceiver().equals(userid) && chat.getSender().equals(myid))){
+                        mChat.add(chat);
+                    }
+                    if (isGroup && chat.getReceiver().equals(userid)){
+                        mChat.add(chat);
                     }
                     messageAdapter = new MessageAdapter(MessageActivity.this, mChat, imageurl);
                     recyclerView.setAdapter(messageAdapter);
